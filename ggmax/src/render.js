@@ -39,7 +39,7 @@ const ffmpeg = args => execFileSync('ffmpeg', ['-y', '-v', 'error', ...args], { 
     const frames = path.join(dir, 'f_%04d.png');
     fs.copyFileSync(path.join(dir, 'f_0000.png'), path.join(OUT, `${name}.png`));
     ffmpeg(['-framerate', String(FPS), '-i', frames, '-filter_complex',
-      '[0:v]split[a][b];[a]palettegen=max_colors=255:stats_mode=full[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
+      '[0:v]split[a][b];[a]palettegen=max_colors=128:stats_mode=full[p];[b][p]paletteuse=dither=none:diff_mode=rectangle',
       '-loop', '0', path.join(OUT, `${name}.gif`)]);
     ffmpeg(['-framerate', String(FPS), '-i', frames, '-filter_complex',
       `[0:v]scale=${LITE[name]}:-2:flags=area,split[a][b];[a]palettegen=max_colors=96:stats_mode=full[p];[b][p]paletteuse=dither=none:diff_mode=rectangle`,
