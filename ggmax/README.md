@@ -1,10 +1,11 @@
 # Deltrax — banner e logo animados (GGMAX)
 
-Estilo do logo clássico do Roblox: letras brancas com degradê azul-claro, contorno vermelho
-grosso e borda escura, cada letra num ângulo diferente. No lugar do "A" de **DELTRAX** entra o
-quadrado vermelho inclinado com furo branco, e o ícone é um selo redondo vermelho com o **D**.
-A animação mantém as letras caindo e quicando, o brilho, a explosão, o bonequinho acenando e
-as transições em círculo.
+Estilo inspirado nas intros do logo antigo de Roblox: letras em bloco pretas caindo e quicando,
+brilho passando nas letras, explosão de desenho animado, o bonequinho clássico acenando e
+transições em círculo. O "A" de **DELTRAX** é um quadrado vermelho inclinado com furo preto
+(como o "O" do logo antigo), e o mesmo quadrado é o ícone da marca.
+
+As cores do quadrado ficam em `SQ_BODY` e `SQ_HOLE`, no começo de `src/deltrax-anim.html`.
 
 | Arquivo | Tamanho | Uso |
 | --- | --- | --- |
