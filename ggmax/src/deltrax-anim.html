@@ -57,19 +57,33 @@ const rng = seed => { let s = seed >>> 0; return () => { s = (Math.imul(s, 16645
 /* ---------- letras em bloco (altura 100 unidades) ---------- */
 // O "A" é um Δ inclinado com furo triangular — a assinatura da marca,
 // no mesmo espírito do "O" inclinado do logo antigo.
+// Estilo do logo clássico: letras grossas "recortadas à mão", contorno vermelho
+// grosso e miolos pequenos. No lugar do "A" entra o quadrado inclinado com furo.
 const GLYPHS = {
-  D: { w: 92, d: 'M0 0H52C80 0 92 20 92 50C92 80 80 100 52 100H0Z M30 27V73H47C57 73 62 65 62 50C62 35 57 27 47 27Z' },
-  E: { w: 78, d: 'M0 0H78V26H30V38H70V62H30V74H78V100H0Z' },
-  L: { w: 74, d: 'M0 0H30V73H74V100H0Z' },
-  T: { w: 84, d: 'M0 0H84V27H57V100H27V27H0Z' },
-  R: { w: 90, d: 'M0 0H54C76 0 88 14 88 34C88 50 80 60 68 64L90 100H57L40 68H30V100H0Z M30 25V45H51C57 45 60 41 60 35C60 29 57 25 51 25Z' },
-  A: { w: 111, d: 'M46 -2L99 100H-7Z M46 46L29 80H63Z', tilt: -14 * Math.PI / 180, px: 46, py: 60 },
-  X: { w: 94, d: 'M0 0H34L47 30L60 0H94L64 50L94 100H60L47 70L34 100H0L30 50Z' },
+  D: { w: 88, d: 'M0 1L56 -1L80 12L90 46L84 82L56 101L1 99Z M31 31L49 30L58 44L57 60L48 70L31 69Z' },
+  E: { w: 76, d: 'M0 0L75 2L74 27L31 27L31 38L66 37L65 61L31 62L31 72L77 71L76 99L1 100Z' },
+  L: { w: 70, d: 'M0 1L32 0L31 71L71 70L70 100L0 99Z' },
+  T: { w: 84, d: 'M0 0L84 2L83 29L58 29L58 100L28 99L28 30L1 30Z' },
+  R: { w: 90, d: 'M0 0L58 1L81 13L87 37L76 57L92 98L58 101L46 69L32 69L31 100L0 99Z M31 24L51 24L57 35L51 46L31 46Z' },
+  A: { w: 98, square: true, tilt: -14 * Math.PI / 180, px: 49, py: 50 },
+  X: { w: 94, d: 'M0 0L35 2L48 28L61 1L95 3L66 50L95 98L60 100L47 73L33 100L-1 97L28 50Z' },
 };
-for (const k in GLYPHS) GLYPHS[k].p = new Path2D(GLYPHS[k].d);
-const HOLE_A = new Path2D('M46 46L29 80H63Z'); // miolo do Δ (pintado de vermelho)
+const SQ_SIDE = 84, SQ_HOLE = 24;
+for (const k in GLYPHS) {
+  const g = GLYPHS[k];
+  if (g.square) {
+    const m = new DOMMatrix().translate(g.px, g.py), outer = new Path2D(), hole = new Path2D();
+    outer.roundRect(-SQ_SIDE / 2, -SQ_SIDE / 2, SQ_SIDE, SQ_SIDE, 5);
+    hole.rect(-SQ_HOLE / 2, -SQ_HOLE / 2, SQ_HOLE, SQ_HOLE);
+    g.p = new Path2D(); g.p.addPath(outer, m); g.p.addPath(hole, m);
+    g.hole = new Path2D(); g.hole.addPath(hole, m);
+  } else g.p = new Path2D(g.d);
+}
+const CL = { rim: '#8E0F0A', outline: '#E3221B', shadow: '#5E0805', fill: ['#FFFFFF', '#F3FAFE', '#A9DCF2'] };
 const WORD = ['D', 'E', 'L', 'T', 'R', 'A', 'X'];
-const GAP = 7;
+// inclinação e altura de cada letra: o "pulinho" irregular do logo antigo
+const JITTER = [[-0.04, 2], [0.035, -3], [-0.025, 2], [0.04, -2], [-0.03, 1], [0, 0], [0.05, -2]];
+const GAP = 3;
 const LAYOUT = (() => {
   let x = 0; const letters = [];
   for (const ch of WORD) { letters.push({ ch, x, w: GLYPHS[ch].w }); x += GLYPHS[ch].w + GAP; }
@@ -89,58 +103,85 @@ function applyShine(c, sh) {
   c.restore();
 }
 
-// o: {cx, cy, s, tf(i)->{dx,dy,rot,sx,sy,pv,vis}, outline, outlineColor, shadow, shx, shy, fill, shine}
-function drawWordmark(ctx, off, o) {
-  const items = [];
-  LAYOUT.letters.forEach((L, i) => { const tr = o.tf(i); if (tr.vis !== false) items.push({ L, g: GLYPHS[L.ch], tr }); });
-  const place = (c, it, ox, oy) => {
-    const { L, g, tr } = it; const pv = tr.pv ?? 100;
-    c.translate(o.cx + (L.x + L.w / 2 - LAYOUT.width / 2) * o.s + tr.dx + ox, o.cy + (pv - 50) * o.s + tr.dy + oy);
-    c.rotate(tr.rot);
-    c.scale(o.s * tr.sx, o.s * tr.sy);
-    c.translate(-L.w / 2, -pv);
-    if (g.tilt) { c.translate(g.px, g.py); c.rotate(g.tilt); c.translate(-g.px, -g.py); }
-  };
-  ctx.lineJoin = 'round';
-  for (const it of items) { // sombra dura
-    ctx.save(); place(ctx, it, o.shx, o.shy);
-    ctx.fillStyle = ctx.strokeStyle = o.shadow; ctx.lineWidth = o.outline;
-    ctx.stroke(it.g.p); ctx.fill(it.g.p, 'evenodd'); ctx.restore();
-  }
-  for (const it of items) { // contorno branco (adesivo)
-    ctx.save(); place(ctx, it, 0, 0);
-    ctx.strokeStyle = o.outlineColor; ctx.lineWidth = o.outline; ctx.stroke(it.g.p); ctx.restore();
-  }
-  const oc = off.getContext('2d');
-  oc.clearRect(0, 0, off.width, off.height);
+// camadas do estilo clássico: sombra, borda escura, contorno vermelho e recheio branco/azul
+// items: [{path, place(c, ox, oy), square, hole, sq:[cx,cy]}]
+// o: {ol, rim, shx, shy, shine, keep (não limpa a camada), shadowOnLayer}
+function stickerLayers(ctx, off, items, o) {
+  const outer = 2 * (o.ol + o.rim), oc = off.getContext('2d');
+  if (!o.keep) oc.clearRect(0, 0, off.width, off.height);
+  const sc = o.shadowOnLayer ? oc : ctx;
+  sc.save(); sc.lineJoin = 'round';
   for (const it of items) {
-    oc.save(); place(oc, it, 0, 0); oc.fillStyle = o.fill; oc.fill(it.g.p, 'evenodd');
-    if (it.L.ch === 'A' && o.accent) { oc.fillStyle = o.accent; oc.fill(HOLE_A); }
+    sc.save(); it.place(sc, o.shx, o.shy); sc.fillStyle = sc.strokeStyle = CL.shadow;
+    sc.lineWidth = outer; sc.stroke(it.path); sc.fill(it.path); sc.restore();
+  }
+  sc.restore();
+  oc.lineJoin = 'round';
+  for (const it of items) {
+    oc.save(); it.place(oc, 0, 0); oc.strokeStyle = oc.fillStyle = CL.rim;
+    oc.lineWidth = outer; oc.stroke(it.path); oc.fill(it.path); oc.restore();
+  }
+  for (const it of items) {
+    oc.save(); it.place(oc, 0, 0); oc.strokeStyle = CL.outline; oc.lineWidth = 2 * o.ol; oc.stroke(it.path); oc.restore();
+  }
+  for (const it of items) {
+    oc.save(); it.place(oc, 0, 0);
+    if (it.square) { // quadrado vermelho com furo branco
+      const [qx, qy] = it.sq, g = oc.createLinearGradient(qx - 46, qy - 46, qx + 46, qy + 46);
+      g.addColorStop(0, '#FF5047'); g.addColorStop(0.5, '#E3221B'); g.addColorStop(1, '#B9150E');
+      oc.fillStyle = g; oc.fill(it.path, 'evenodd');
+      oc.lineWidth = 3.5; oc.strokeStyle = CL.rim; oc.stroke(it.path); // borda escura própria do quadrado
+      oc.fillStyle = '#FFFFFF'; oc.fill(it.hole);
+      oc.lineWidth = 3; oc.strokeStyle = CL.rim; oc.stroke(it.hole);
+    } else {
+      const g = oc.createLinearGradient(0, 0, 0, 100);
+      g.addColorStop(0, CL.fill[0]); g.addColorStop(0.5, CL.fill[1]); g.addColorStop(1, CL.fill[2]);
+      oc.fillStyle = g; oc.fill(it.path, 'evenodd');
+    }
     oc.restore();
   }
   if (o.shine) applyShine(oc, o.shine);
   ctx.drawImage(off, 0, 0);
 }
 
-function iconPath(c, size) { const h = size / 2; c.beginPath(); c.roundRect(-h, -h, size, size, size * 0.14); }
-function drawIcon(ctx, off, x, y, size, rot, o) {
-  if (size < 1) return;
-  const lw = Math.max(3, size * 0.055);
-  ctx.save(); ctx.translate(x + size * 0.045, y + size * 0.06); ctx.rotate(rot);
-  iconPath(ctx, size); ctx.fillStyle = ctx.strokeStyle = o.shadow; ctx.lineWidth = lw; ctx.lineJoin = 'round';
-  ctx.fill(); ctx.stroke(); ctx.restore();
+// o: {cx, cy, s, tf(i)->{dx,dy,rot,sx,sy,pv,vis}, ol, rim, shx, shy, shine}
+function drawWordmark(ctx, off, o) {
+  const items = [];
+  LAYOUT.letters.forEach((L, i) => {
+    const tr = o.tf(i); if (tr.vis === false) return;
+    const g = GLYPHS[L.ch], j = JITTER[i], pv = tr.pv ?? 100;
+    items.push({
+      path: g.p, square: g.square, hole: g.hole, sq: [g.px, g.py],
+      place: (c, ox, oy) => {
+        c.translate(o.cx + (L.x + L.w / 2 - LAYOUT.width / 2) * o.s + tr.dx + ox, o.cy + (pv - 50 + j[1]) * o.s + tr.dy + oy);
+        c.rotate(tr.rot + j[0]);
+        c.scale(o.s * tr.sx, o.s * tr.sy);
+        c.translate(-L.w / 2, -pv);
+        if (g.tilt) { c.translate(g.px, g.py); c.rotate(g.tilt); c.translate(-g.px, -g.py); }
+      },
+    });
+  });
+  stickerLayers(ctx, off, items, o);
+}
+
+// selo redondo vermelho com o "D" branco (estilo do ícone antigo)
+function drawBadge(ctx, off, x, y, r, rot, o) {
+  if (r < 1) return;
+  ctx.beginPath(); ctx.arc(x + r * 0.06, y + r * 0.09, r, 0, TAU); ctx.fillStyle = CL.shadow; ctx.fill();
   const oc = off.getContext('2d');
   oc.clearRect(0, 0, off.width, off.height);
-  oc.save(); oc.translate(x, y); oc.rotate(rot); oc.lineJoin = 'round';
-  iconPath(oc, size); oc.fillStyle = o.body; oc.fill(); oc.lineWidth = lw; oc.strokeStyle = o.outline; oc.stroke();
-  // Δ = o mesmo glifo do "A" da marca, com miolo vermelho
-  const k = size * 0.0058;
-  oc.scale(k, k); oc.translate(-46, -57);
-  oc.fillStyle = o.glyph; oc.fill(GLYPHS.A.p, 'evenodd');
-  oc.fillStyle = o.tri; oc.fill(HOLE_A);
-  oc.restore();
-  if (o.shine) applyShine(oc, o.shine);
-  ctx.drawImage(off, 0, 0);
+  oc.beginPath(); oc.arc(x, y, r, 0, TAU); oc.fillStyle = CL.rim; oc.fill();
+  const g = oc.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r * 0.92);
+  g.addColorStop(0, '#FF5A50'); g.addColorStop(0.6, '#E3221B'); g.addColorStop(1, '#B3140E');
+  oc.beginPath(); oc.arc(x, y, r * 0.9, 0, TAU); oc.fillStyle = g; oc.fill();
+  oc.lineWidth = r * 0.025; oc.strokeStyle = 'rgba(255,255,255,0.35)'; oc.stroke();
+  oc.beginPath(); oc.ellipse(x - r * 0.05, y - r * 0.45, r * 0.6, r * 0.3, -0.12, 0, TAU);
+  oc.fillStyle = 'rgba(255,255,255,0.12)'; oc.fill();
+  const D = GLYPHS.D, k = r * 1.22 / 100;
+  stickerLayers(ctx, off, [{
+    path: D.p,
+    place: (c, ox, oy) => { c.translate(x + r * 0.03 + ox, y - r * 0.02 + oy); c.rotate(rot - 0.1); c.scale(k, k); c.translate(-D.w / 2, -50); },
+  }], { ol: 9, rim: 4, shx: r * 0.05, shy: r * 0.07, keep: true, shadowOnLayer: true, shine: o.shine });
 }
 
 function part(c, x, y, w, h, r, fill, lw) {
@@ -288,25 +329,24 @@ function drawBanner(c, off, t) {
 
   // boneco acenando (esquerda)
   const pn = P(6.1, 0.75);
-  drawNoob(c, 205, 400 + 440 * (1 - easeOutBack(pn, 1.5)), 66, {
+  drawNoob(c, 180, 400 + 440 * (1 - easeOutBack(pn, 1.5)), 66, {
     rot: 0.06,
     armL: 0.22 + 0.05 * Math.sin(TAU * 2 * t / T),
-    armR: -2.55 - 0.32 * Math.sin(TAU * 8 * t / T),
+    armR: -2.75 - 0.25 * Math.sin(TAU * 8 * t / T),
     headRot: 0.07 * Math.sin(TAU * 4 * t / T),
   });
 
-  // ícone Δ (direita)
+  // selo "D" (direita)
   const pi = P(6.35, 0.75);
   if (pi > 0) {
     const sc = easeOutBack(pi, 1.8), bob = 7 * Math.sin(TAU * 2 * t / T + 1.2);
-    const rot = -0.24 + 0.08 * Math.sin(TAU * 2 * t / T) - TAU * (1 - easeOutCubic(pi));
+    const rot = 0.07 * Math.sin(TAU * 2 * t / T) - TAU * (1 - easeOutCubic(pi));
     const sh = prog(t, 1.3, 1.95);
-    drawIcon(c, off, 1318, 230 + bob, 168 * sc, rot, {
-      body: C.white, glyph: C.black, tri: C.red, outline: C.black, shadow: C.shadow,
-      shine: sh > 0 && sh < 1 ? { x: lerp(1180, 1460, easeInOutSine(sh)), y: 230, ang: 0.35, w: 40 } : null,
+    drawBadge(c, off, 1318, 232 + bob, 96 * sc, rot, {
+      shine: sh > 0 && sh < 1 ? { x: lerp(1180, 1460, easeInOutSine(sh)), y: 232, ang: 0.35, w: 40 } : null,
     });
     const sp = P(6.9, 0.3);
-    [[1222, 112, 0], [1428, 128, 2.1], [1440, 330, 4.2]].forEach(([x, y, ph]) =>
+    [[1212, 108, 0], [1432, 120, 2.1], [1442, 338, 4.2]].forEach(([x, y, ph]) =>
       sparkle(c, x, y, 16 * sp * Math.max(0, Math.sin(TAU * 2 * t / T + ph))));
   }
 
@@ -314,16 +354,16 @@ function drawBanner(c, off, t) {
     chip(c, ch.x, ch.y, ch.txt, ch.rot, easeOutBack(P(ch.st, 0.45), 2.2), 30);
 
   // DELTRAX
-  const wmS = 780 / LAYOUT.width;
+  const wmS = 770 / LAYOUT.width;
   const sh = prog(t, 0.6, 1.5);
   drawWordmark(c, off, {
-    cx: 750, cy: 200, s: wmS, outline: 18, outlineColor: C.white, shadow: C.shadow, shx: 6, shy: 9, fill: C.black, accent: C.red,
+    cx: 750, cy: 200, s: wmS, ol: 10, rim: 4, shx: 6, shy: 9,
     shine: sh > 0 && sh < 1 ? { x: lerp(300, 1200, easeInOutSine(sh)), y: 200, ang: 0.35, w: 55 } : null,
     tf: i => {
       const hop = prog(t, 2.5 + i * 0.07, 2.5 + i * 0.07 + 0.32), bob = -18 * Math.sin(Math.PI * hop);
       const p = P(5.45 + i * 0.11, 0.6);
       if (p <= 0) return { vis: false };
-      if (WORD[i] === 'A') { const s = easeOutBack(p, 2.2); return { dx: 0, dy: bob, rot: -TAU * 1.25 * (1 - easeOutCubic(p)), sx: s, sy: s, pv: 55 }; }
+      if (WORD[i] === 'A') { const s = easeOutBack(p, 2.2); return { dx: 0, dy: bob, rot: -TAU * 1.25 * (1 - easeOutCubic(p)), sx: s, sy: s, pv: 50 }; }
       const b = easeOutBounce(p), sq = Math.sin(Math.PI * clamp((p - 0.36) / 0.2));
       return { dx: 0, dy: -480 * (1 - b) + bob, rot: ROT0[i] * (1 - easeOutCubic(p)), sx: 1 + 0.12 * sq, sy: 1 - 0.18 * sq, pv: 100 };
     },
@@ -375,23 +415,22 @@ function drawLogoScene(c, off, t) {
   const shp = prog(t, 0.45, 1.25);
   const shine = shp > 0 && shp < 1 ? { x: lerp(-140, 650, easeInOutSine(shp)), y: 256, ang: 0.38, w: 50 } : null;
 
-  const pi = P(5.08, 0.8), ci = clamp(pi * 1.25);
-  drawIcon(c, off, 256, 200 + 5 * Math.sin(TAU * 2 * t / T + 1),
-    204 * (1 + 1.5 * (1 - easeOutBack(pi, 1.3))),
-    -0.24 + 0.08 * Math.sin(TAU * 2 * t / T) - 1.5 * Math.PI * (1 - easeOutCubic(pi)),
-    { body: lerpColor('#262626', C.white, ci), glyph: lerpColor('#6A6A6A', C.black, ci), tri: lerpColor('#555555', C.red, ci), outline: C.black, shadow: C.shadow, shine });
+  const pi = P(5.08, 0.8);
+  drawBadge(c, off, 256, 210 + 5 * Math.sin(TAU * 2 * t / T + 1),
+    138 * (1 + 1.5 * (1 - easeOutBack(pi, 1.3))),
+    0.07 * Math.sin(TAU * 2 * t / T) - 1.5 * Math.PI * (1 - easeOutCubic(pi)), { shine });
 
   const sp = P(6.3, 0.3);
   [[402, 92, 0], [104, 138, 2.1], [424, 296, 4.2]].forEach(([x, y, ph]) =>
     sparkle(c, x, y, 14 * sp * Math.max(0, Math.sin(TAU * 2 * t / T + ph))));
 
   drawWordmark(c, off, {
-    cx: 256, cy: 394, s: 340 / LAYOUT.width, outline: 20, outlineColor: C.white, shadow: C.shadow, shx: 3, shy: 5, fill: C.black, accent: C.red, shine,
+    cx: 256, cy: 400, s: 330 / LAYOUT.width, ol: 11, rim: 4.5, shx: 3, shy: 5, shine,
     tf: i => {
       const hop = prog(t, 1.7 + i * 0.07, 1.7 + i * 0.07 + 0.3), bob = -9 * Math.sin(Math.PI * hop);
       const p = P(5.55 + i * 0.085, 0.5);
       if (p <= 0) return { vis: false };
-      if (WORD[i] === 'A') { const s = easeOutBack(p, 2.2); return { dx: 0, dy: bob, rot: -TAU * 1.25 * (1 - easeOutCubic(p)), sx: s, sy: s, pv: 55 }; }
+      if (WORD[i] === 'A') { const s = easeOutBack(p, 2.2); return { dx: 0, dy: bob, rot: -TAU * 1.25 * (1 - easeOutCubic(p)), sx: s, sy: s, pv: 50 }; }
       const b = easeOutBounce(p), sq = Math.sin(Math.PI * clamp((p - 0.36) / 0.2));
       return { dx: 0, dy: -330 * (1 - b) + bob, rot: ROT0[i] * (1 - easeOutCubic(p)), sx: 1 + 0.12 * sq, sy: 1 - 0.18 * sq, pv: 100 };
     },
