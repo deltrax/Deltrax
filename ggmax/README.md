@@ -1,13 +1,9 @@
-# Deltrax — banner e logo animados (GGMAX) · v2
+# Deltrax — banner e logo animados (GGMAX)
 
-Identidade inspirada no Roblox clássico (2008–2012), em vermelho, preto e branco.
-
-- **Símbolo:** quadrado inclinado (a geometria do logo antigo do Roblox) com o miolo
-  vazado em forma de **D**. Ele também é a primeira letra do nome: **[D]ELTRAX**.
-- **Nome:** letras em bloco refeitas, com espaçamento ajustado par a par, contorno branco
-  e volume vermelho-escuro (efeito de peça 3D).
-- **Fundo:** luz vermelha com textura de *studs* (as bolinhas das peças antigas) e explosão branca.
-- **Boneco:** o noob clássico com sombreado e a estampa do símbolo na camisa.
+Estilo inspirado nas intros do logo antigo de Roblox: letras em bloco caindo e quicando,
+brilho passando nas letras, explosão de desenho animado, o bonequinho clássico acenando
+e transições em círculo. O "A" de **DELTRAX** é um Δ inclinado com miolo vermelho, que
+também é o ícone da marca.
 
 | Arquivo | Tamanho | Uso |
 | --- | --- | --- |
@@ -24,9 +20,8 @@ O logo deixa tudo dentro do círculo central, então pode ser cortado redondo.
 
 ## Editar e gerar de novo
 
-- `src/deltrax-anim.html` — abra no navegador para ver a animação ao vivo. Os textos
-  (`CONTAS ROBLOX ANTIGAS`, `OG`, `RARAS`, `CLÁSSICAS`) ficam nesse arquivo.
+- `src/deltrax-anim.html` — abra no navegador para ver a animação ao vivo. Textos como
+  `CONTAS ROBLOX ANTIGAS` e as etiquetas (`OG`, `RARAS`, `CLÁSSICAS`) ficam nesse arquivo.
 - `src/render.js` — exporta tudo de novo: `node src/render.js` (precisa de Node, Playwright e ffmpeg).
 
-Fonte dos textos secundários: [Inter](https://fonts.google.com/specimen/Inter) (licença SIL Open Font License).
-A primeira versão (com o Δ) continua no histórico do git.
+Fonte: [Lilita One](https://fonts.google.com/specimen/Lilita+One) (licença SIL Open Font License).
