@@ -46,6 +46,8 @@ const ffmpeg = args => execFileSync('ffmpeg', ['-y', '-v', 'error', ...args], { 
       '-loop', '0', path.join(OUT, `${name}-leve.gif`)]);
     ffmpeg(['-framerate', String(FPS), '-i', frames, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18',
       '-preset', 'slow', '-movflags', '+faststart', path.join(OUT, `${name}.mp4`)]);
+    ffmpeg(['-framerate', String(FPS), '-i', frames, '-vf', `scale=${LITE[name]}:-2:flags=area`, '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'slow', '-movflags', '+faststart', path.join(OUT, `${name}-leve.mp4`)]);
     fs.rmSync(dir, { recursive: true, force: true });
     const kb = f => (fs.statSync(path.join(OUT, f)).size / 1024).toFixed(0) + ' KB';
     console.log(`${name}: ${n} quadros → ${name}.gif (${kb(name + '.gif')}), ${name}-leve.gif (${kb(name + '-leve.gif')}), ${name}.mp4 (${kb(name + '.mp4')}), ${name}.png`);

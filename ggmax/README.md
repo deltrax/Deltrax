@@ -13,6 +13,7 @@ também é o ícone da marca.
 | `logo-leve.gif` | 256×256 | se o site recusar o arquivo por tamanho |
 | `banner.png` / `logo.png` | estático | caso o site não aceite GIF animado |
 | `banner.mp4` / `logo.mp4` | vídeo | redes sociais, Discord etc. |
+| `banner-leve.mp4` / `logo-leve.mp4` | vídeo menor | 1000×334 e 256×256 |
 
 O primeiro quadro de cada GIF já é a arte completa, então até a miniatura parada fica boa.
 O logo deixa tudo dentro do círculo central, então pode ser cortado redondo.
