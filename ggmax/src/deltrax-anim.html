@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deltrax Animado</title>
+<style>
+  @font-face { font-family: 'Lilita One'; src: url('fonts/LilitaOne.ttf') format('truetype'); }
+  html, body { margin: 0; background: #141414; color: #eee; font-family: system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px; }
+  canvas { max-width: 100%; height: auto; display: block; box-shadow: 0 10px 40px #0008; }
+  #logo { border-radius: 50%; }
+  body.export { padding: 0; gap: 0; }
+  body.export #logo { border-radius: 0; }
+</style>
+</head>
+<body>
+<canvas id="banner" width="1500" height="500"></canvas>
+<canvas id="logo" width="512" height="512"></canvas>
+<script>
+'use strict';
+/* ==========================================================================
+   DELTRAX — banner + logo animados (estilo logo antigo de Roblox)
+   Tudo é desenhado por código: drawFrame(cena, t) é determinístico, então o
+   mesmo t sempre gera o mesmo quadro (usado pelo render.js para exportar GIF).
+   ========================================================================== */
+
+const TAU = Math.PI * 2;
+const FONT = "'Lilita One', 'Arial Black', sans-serif";
+const C = {
+  red: '#E3221B', redLight: '#EF4B42', redDark: '#BC160F', shadow: '#6E0B07',
+  pink1: '#F6948C', pink2: '#FCD5D1', white: '#FFFFFF', black: '#151515',
+  yellow: '#F9D52F', blue: '#1D4ED8', green: '#8DBF3A',
+  gray1: '#C4C4C4', gray2: '#808080', dark: '#1C1C1C',
+};
+
+/* ---------- matemática / easing ---------- */
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const easeOutCubic = x => 1 - Math.pow(1 - x, 3);
+const easeInCubic = x => x * x * x;
+const easeInOutCubic = x => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const easeInOutSine = x => -(Math.cos(Math.PI * x) - 1) / 2;
+const easeOutBack = (x, s = 1.70158) => x <= 0 ? 0 : 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2);
+const easeOutBounce = x => {
+  const n1 = 7.5625, d1 = 2.75;
+  if (x < 1 / d1) return n1 * x * x;
+  if (x < 2 / d1) return n1 * (x -= 1.5 / d1) * x + 0.75;
+  if (x < 2.5 / d1) return n1 * (x -= 2.25 / d1) * x + 0.9375;
+  return n1 * (x -= 2.625 / d1) * x + 0.984375;
+};
+const hex2rgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const lerpColor = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], t))).join(',')})`; };
+const rng = seed => { let s = seed >>> 0; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; };
+
+/* ---------- letras em bloco (altura 100 unidades) ---------- */
+// O "A" é um Δ inclinado com furo triangular — a assinatura da marca,
+// no mesmo espírito do "O" inclinado do logo antigo.
+const GLYPHS = {
+  D: { w: 92, d: 'M0 0H52C80 0 92 20 92 50C92 80 80 100 52 100H0Z M30 27V73H47C57 73 62 65 62 50C62 35 57 27 47 27Z' },
+  E: { w: 78, d: 'M0 0H78V26H30V38H70V62H30V74H78V100H0Z' },
+  L: { w: 74, d: 'M0 0H30V73H74V100H0Z' },
+  T: { w: 84, d: 'M0 0H84V27H57V100H27V27H0Z' },
+  R: { w: 90, d: 'M0 0H54C76 0 88 14 88 34C88 50 80 60 68 64L90 100H57L40 68H30V100H0Z M30 25V45H51C57 45 60 41 60 35C60 29 57 25 51 25Z' },
+  A: { w: 111, d: 'M46 -2L99 100H-7Z M46 46L29 80H63Z', tilt: -14 * Math.PI / 180, px: 46, py: 60 },
+  X: { w: 94, d: 'M0 0H34L47 30L60 0H94L64 50L94 100H60L47 70L34 100H0L30 50Z' },
+};
+for (const k in GLYPHS) GLYPHS[k].p = new Path2D(GLYPHS[k].d);
+const HOLE_A = new Path2D('M46 46L29 80H63Z'); // miolo do Δ (pintado de vermelho)
+const WORD = ['D', 'E', 'L', 'T', 'R', 'A', 'X'];
+const GAP = 7;
+const LAYOUT = (() => {
+  let x = 0; const letters = [];
+  for (const ch of WORD) { letters.push({ ch, x, w: GLYPHS[ch].w }); x += GLYPHS[ch].w + GAP; }
+  return { letters, width: x - GAP };
+})();
+
+/* ---------- peças de desenho ---------- */
+function applyShine(c, sh) {
+  c.save();
+  c.globalCompositeOperation = 'source-atop';
+  c.translate(sh.x, sh.y); c.rotate(sh.ang);
+  const g = c.createLinearGradient(-sh.w, 0, sh.w, 0);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  g.addColorStop(0.5, 'rgba(255,255,255,0.92)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(-sh.w, -2000, sh.w * 2, 4000);
+  c.restore();
+}
+
+// o: {cx, cy, s, tf(i)->{dx,dy,rot,sx,sy,pv,vis}, outline, outlineColor, shadow, shx, shy, fill, shine}
+function drawWordmark(ctx, off, o) {
+  const items = [];
+  LAYOUT.letters.forEach((L, i) => { const tr = o.tf(i); if (tr.vis !== false) items.push({ L, g: GLYPHS[L.ch], tr }); });
+  const place = (c, it, ox, oy) => {
+    const { L, g, tr } = it; const pv = tr.pv ?? 100;
+    c.translate(o.cx + (L.x + L.w / 2 - LAYOUT.width / 2) * o.s + tr.dx + ox, o.cy + (pv - 50) * o.s + tr.dy + oy);
+    c.rotate(tr.rot);
+    c.scale(o.s * tr.sx, o.s * tr.sy);
+    c.translate(-L.w / 2, -pv);
+    if (g.tilt) { c.translate(g.px, g.py); c.rotate(g.tilt); c.translate(-g.px, -g.py); }
+  };
+  ctx.lineJoin = 'round';
+  for (const it of items) { // sombra dura
+    ctx.save(); place(ctx, it, o.shx, o.shy);
+    ctx.fillStyle = ctx.strokeStyle = o.shadow; ctx.lineWidth = o.outline;
+    ctx.stroke(it.g.p); ctx.fill(it.g.p, 'evenodd'); ctx.restore();
+  }
+  for (const it of items) { // contorno branco (adesivo)
+    ctx.save(); place(ctx, it, 0, 0);
+    ctx.strokeStyle = o.outlineColor; ctx.lineWidth = o.outline; ctx.stroke(it.g.p); ctx.restore();
+  }
+  const oc = off.getContext('2d');
+  oc.clearRect(0, 0, off.width, off.height);
+  for (const it of items) {
+    oc.save(); place(oc, it, 0, 0); oc.fillStyle = o.fill; oc.fill(it.g.p, 'evenodd');
+    if (it.L.ch === 'A' && o.accent) { oc.fillStyle = o.accent; oc.fill(HOLE_A); }
+    oc.restore();
+  }
+  if (o.shine) applyShine(oc, o.shine);
+  ctx.drawImage(off, 0, 0);
+}
+
+function iconPath(c, size) { const h = size / 2; c.beginPath(); c.roundRect(-h, -h, size, size, size * 0.14); }
+function drawIcon(ctx, off, x, y, size, rot, o) {
+  if (size < 1) return;
+  const lw = Math.max(3, size * 0.055);
+  ctx.save(); ctx.translate(x + size * 0.045, y + size * 0.06); ctx.rotate(rot);
+  iconPath(ctx, size); ctx.fillStyle = ctx.strokeStyle = o.shadow; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+  ctx.fill(); ctx.stroke(); ctx.restore();
+  const oc = off.getContext('2d');
+  oc.clearRect(0, 0, off.width, off.height);
+  oc.save(); oc.translate(x, y); oc.rotate(rot); oc.lineJoin = 'round';
+  iconPath(oc, size); oc.fillStyle = o.body; oc.fill(); oc.lineWidth = lw; oc.strokeStyle = o.outline; oc.stroke();
+  // Δ = o mesmo glifo do "A" da marca, com miolo vermelho
+  const k = size * 0.0058;
+  oc.scale(k, k); oc.translate(-46, -57);
+  oc.fillStyle = o.glyph; oc.fill(GLYPHS.A.p, 'evenodd');
+  oc.fillStyle = o.tri; oc.fill(HOLE_A);
+  oc.restore();
+  if (o.shine) applyShine(oc, o.shine);
+  ctx.drawImage(off, 0, 0);
+}
+
+function part(c, x, y, w, h, r, fill, lw) {
+  c.beginPath(); c.roundRect(x, y, w, h, r);
+  c.fillStyle = fill; c.fill(); c.lineWidth = lw; c.strokeStyle = C.black; c.stroke();
+}
+// boneco em bloco clássico; (x, y) = quadril
+function drawNoob(c, x, y, u, pose) {
+  const lw = Math.max(2.5, u * 0.07);
+  const bs = pose.bodyScale ?? 1, as = pose.armScale ?? 1;
+  c.save(); c.translate(x, y); c.rotate(pose.rot || 0); c.lineJoin = 'round';
+  if (bs > 0.001) {
+    if (as > 0.001) {
+      for (const [side, ang] of [[-1, pose.armL], [1, pose.armR]]) {
+        c.save(); c.translate(side * 1.5 * u * bs, -u - 0.78 * u * bs); c.rotate(ang); c.scale(as * bs, as * bs);
+        part(c, -0.5 * u, -0.22 * u, u, 2 * u, 0.18 * u, C.yellow, lw / (as * bs)); c.restore();
+      }
+    }
+    c.save(); c.translate(0, -u); c.scale(bs, bs); c.translate(0, u);
+    part(c, -u, 0, 0.98 * u, 2 * u, 0.12 * u, C.green, lw / bs);
+    part(c, 0.02 * u, 0, 0.98 * u, 2 * u, 0.12 * u, C.green, lw / bs);
+    part(c, -u, -2 * u, 2 * u, 2 * u, 0.16 * u, C.blue, lw / bs);
+    c.restore();
+  }
+  if (pose.head !== false) {
+    c.save(); c.translate(0, -u - u * bs + (pose.headDy || 0)); c.rotate(pose.headRot || 0);
+    const hw = 1.25 * u, hh = 1.12 * u;
+    part(c, -hw / 2, -hh + 0.04 * u, hw, hh, 0.32 * u, C.yellow, lw);
+    c.fillStyle = C.black;
+    for (const s of [-1, 1]) { c.beginPath(); c.ellipse(s * 0.22 * u, -0.68 * u, 0.085 * u, 0.12 * u, 0, 0, TAU); c.fill(); }
+    c.beginPath(); c.arc(0, -0.58 * u, 0.27 * u, 0.18 * Math.PI, 0.82 * Math.PI);
+    c.lineWidth = lw * 1.1; c.lineCap = 'round'; c.strokeStyle = C.black; c.stroke();
+    c.restore();
+  }
+  c.restore();
+}
+
+function sparkle(c, x, y, r) {
+  if (r <= 0.3) return;
+  c.save(); c.translate(x, y); c.beginPath();
+  c.moveTo(0, -r); c.quadraticCurveTo(0, 0, r, 0); c.quadraticCurveTo(0, 0, 0, r);
+  c.quadraticCurveTo(0, 0, -r, 0); c.quadraticCurveTo(0, 0, 0, -r);
+  c.fillStyle = C.white; c.fill(); c.restore();
+}
+
+function chip(c, x, y, txt, rot, sc, size) {
+  if (sc <= 0.001) return;
+  c.save(); c.translate(x, y); c.rotate(rot); c.scale(sc, sc);
+  c.font = `${size}px ${FONT}`; c.letterSpacing = '1px';
+  const w = c.measureText(txt).width + size * 1.1, h = size * 1.45;
+  c.beginPath(); c.roundRect(-w / 2 + 5, -h / 2 + 7, w, h, h * 0.3); c.fillStyle = C.shadow; c.fill();
+  c.beginPath(); c.roundRect(-w / 2, -h / 2, w, h, h * 0.3); c.fillStyle = C.white; c.fill();
+  c.lineWidth = 4; c.strokeStyle = C.black; c.stroke();
+  c.fillStyle = C.black; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 0, h * 0.05);
+  c.restore();
+}
+
+function tagline(c, x, y, txt, size, rot, sc) {
+  if (sc <= 0.001) return;
+  c.save(); c.translate(x, y); c.rotate(rot); c.scale(sc, sc);
+  c.font = `${size}px ${FONT}`; c.letterSpacing = '2px';
+  const w = c.measureText(txt).width + size * 1.3, h = size * 1.5;
+  c.beginPath(); c.roundRect(-w / 2 + 6, -h / 2 + 8, w, h, h / 2); c.fillStyle = C.shadow; c.fill();
+  c.beginPath(); c.roundRect(-w / 2, -h / 2, w, h, h / 2); c.fillStyle = C.black; c.fill();
+  c.lineWidth = 6; c.strokeStyle = C.white; c.stroke();
+  c.fillStyle = C.white; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, 0, h * 0.05);
+  c.restore();
+}
+
+/* ---------- fundo: vermelho, riscos de velocidade, blocos e explosão ---------- */
+function makeBg(W, H, seed, nStreaks, nBricks) {
+  const r = rng(seed);
+  const streaks = Array.from({ length: nStreaks }, (_, i) => ({
+    x: r() * W, y: r() * H, len: 50 + r() * 140, w: 7 + r() * 9,
+    loops: r() < 0.4 ? 2 : 1, off: r(), col: i % 3 === 0 ? C.redDark : C.redLight,
+  }));
+  const bricks = Array.from({ length: nBricks }, () => ({ x: r() * W, s: 12 + r() * 16, off: r(), spin: r() < 0.5 ? -1 : 1, ph: r() * TAU }));
+  return { W, H, streaks, bricks };
+}
+function drawBg(c, bg, t, T) {
+  const { W, H } = bg;
+  c.fillStyle = C.red; c.fillRect(0, 0, W, H);
+  const ang = -0.52, dx = Math.cos(ang), dy = Math.sin(ang), D = W + H + 400;
+  c.lineCap = 'round';
+  for (const s of bg.streaks) {
+    const ph = ((s.off + s.loops * t / T) % 1) * D - D / 2;
+    const px = s.x + dx * ph, py = s.y + dy * ph;
+    c.strokeStyle = s.col; c.lineWidth = s.w; c.beginPath();
+    c.moveTo(px - dx * s.len / 2, py - dy * s.len / 2); c.lineTo(px + dx * s.len / 2, py + dy * s.len / 2); c.stroke();
+  }
+  for (const b of bg.bricks) {
+    const ph = (b.off + t / T) % 1;
+    const y = H + 40 - ph * (H + 80), x = b.x + 14 * Math.sin(TAU * 2 * t / T + b.ph);
+    c.save(); c.translate(x, y); c.rotate(b.ph + b.spin * Math.PI * (t / T));
+    c.beginPath(); c.roundRect(-b.s / 2, -b.s / 2, b.s, b.s, b.s * 0.15);
+    c.lineWidth = 4; c.strokeStyle = C.redLight; c.stroke(); c.restore();
+  }
+}
+function burstLayer(c, R, n, depth, t, T, seed, fill, wob = 0) {
+  const r = rng(seed);
+  const tips = Array.from({ length: n }, (_, i) => ({ a: (i + (r() - 0.5) * 0.4) / n * TAU, k: 1 + (r() - 0.5) * 0.36, ph: r() * TAU }));
+  const tip = i => {
+    const tp = tips[i % n], a = tp.a + (i >= n ? TAU : 0);
+    const tb = Math.floor(t * 6 + 1e-6) / 6; // "boil" de desenho animado (6 trocas/s; T*6 precisa ser inteiro)
+    const rr = R * tp.k * (1 + wob * Math.sin(TAU * 3 * tb / T + tp.ph));
+    return [Math.cos(a) * rr, Math.sin(a) * rr, a];
+  };
+  c.beginPath();
+  const [x0, y0] = tip(0); c.moveTo(x0, y0);
+  for (let i = 0; i < n; i++) {
+    const a1 = tip(i)[2], [x2, y2, a2] = tip(i + 1), am = (a1 + a2) / 2, rc = R * depth;
+    c.quadraticCurveTo(Math.cos(am) * rc, Math.sin(am) * rc, x2, y2);
+  }
+  c.closePath(); c.fillStyle = fill; c.fill();
+}
+
+/* ==========================================================================
+   BANNER 1500×500 — loop de 8 s
+   0.0–4.4 parado (brilho passa nas letras) · 4.4–5.0 círculos fecham ·
+   5.0–5.6 círculo abre · 5.2–8.0 tudo monta de novo (termina igual ao quadro 0)
+   ========================================================================== */
+const BANNER = { W: 1500, H: 500, T: 8 };
+const bannerBg = makeBg(1500, 500, 7, 12, 10);
+const BANNER_CHIPS = [
+  { x: 392, y: 78, txt: 'OG', rot: -0.16, st: 7.0 },
+  { x: 1110, y: 76, txt: 'RARAS', rot: 0.12, st: 7.12 },
+  { x: 1108, y: 442, txt: 'CLÁSSICAS', rot: -0.07, st: 7.24 },
+];
+const ROT0 = [-0.6, 0.45, -0.35, 0.7, -0.5, 0, 0.55];
+
+function drawBanner(c, off, t) {
+  const { W, H, T } = BANNER;
+  const build = t >= 5.0;
+  const P = (a, d) => build ? clamp((t - a) / d) : 1;
+  drawBg(c, bannerBg, t, T);
+
+  const bs = easeOutBack(P(5.18, 0.6), 2.0);
+  if (bs > 0.002) {
+    c.save(); c.translate(750, 240); c.scale(bs, bs); c.scale(2.9, 1);
+    burstLayer(c, 255, 16, 0.40, t, T, 11, C.pink1);
+    burstLayer(c, 222, 14, 0.50, t, T, 23, C.pink2);
+    burstLayer(c, 190, 12, 0.62, t, T, 37, C.white);
+    c.restore();
+  }
+
+  // boneco acenando (esquerda)
+  const pn = P(6.1, 0.75);
+  drawNoob(c, 205, 400 + 440 * (1 - easeOutBack(pn, 1.5)), 66, {
+    rot: 0.06,
+    armL: 0.22 + 0.05 * Math.sin(TAU * 2 * t / T),
+    armR: -2.55 - 0.32 * Math.sin(TAU * 8 * t / T),
+    headRot: 0.07 * Math.sin(TAU * 4 * t / T),
+  });
+
+  // ícone Δ (direita)
+  const pi = P(6.35, 0.75);
+  if (pi > 0) {
+    const sc = easeOutBack(pi, 1.8), bob = 7 * Math.sin(TAU * 2 * t / T + 1.2);
+    const rot = -0.24 + 0.08 * Math.sin(TAU * 2 * t / T) - TAU * (1 - easeOutCubic(pi));
+    const sh = prog(t, 1.3, 1.95);
+    drawIcon(c, off, 1318, 230 + bob, 168 * sc, rot, {
+      body: C.white, glyph: C.black, tri: C.red, outline: C.black, shadow: C.shadow,
+      shine: sh > 0 && sh < 1 ? { x: lerp(1180, 1460, easeInOutSine(sh)), y: 230, ang: 0.35, w: 40 } : null,
+    });
+    const sp = P(6.9, 0.3);
+    [[1222, 112, 0], [1428, 128, 2.1], [1440, 330, 4.2]].forEach(([x, y, ph]) =>
+      sparkle(c, x, y, 16 * sp * Math.max(0, Math.sin(TAU * 2 * t / T + ph))));
+  }
+
+  for (const ch of BANNER_CHIPS)
+    chip(c, ch.x, ch.y, ch.txt, ch.rot, easeOutBack(P(ch.st, 0.45), 2.2), 30);
+
+  // DELTRAX
+  const wmS = 780 / LAYOUT.width;
+  const sh = prog(t, 0.6, 1.5);
+  drawWordmark(c, off, {
+    cx: 750, cy: 200, s: wmS, outline: 18, outlineColor: C.white, shadow: C.shadow, shx: 6, shy: 9, fill: C.black, accent: C.red,
+    shine: sh > 0 && sh < 1 ? { x: lerp(300, 1200, easeInOutSine(sh)), y: 200, ang: 0.35, w: 55 } : null,
+    tf: i => {
+      const hop = prog(t, 2.5 + i * 0.07, 2.5 + i * 0.07 + 0.32), bob = -18 * Math.sin(Math.PI * hop);
+      const p = P(5.45 + i * 0.11, 0.6);
+      if (p <= 0) return { vis: false };
+      if (WORD[i] === 'A') { const s = easeOutBack(p, 2.2); return { dx: 0, dy: bob, rot: -TAU * 1.25 * (1 - easeOutCubic(p)), sx: s, sy: s, pv: 55 }; }
+      const b = easeOutBounce(p), sq = Math.sin(Math.PI * clamp((p - 0.36) / 0.2));
+      return { dx: 0, dy: -480 * (1 - b) + bob, rot: ROT0[i] * (1 - easeOutCubic(p)), sx: 1 + 0.12 * sq, sy: 1 - 0.18 * sq, pv: 100 };
+    },
+  });
+
+  tagline(c, 750, 330, 'CONTAS ROBLOX ANTIGAS', 40, -0.025, easeOutBack(P(6.75, 0.5), 2));
+
+  // transição: círculos fecham (4.4–5.0) e abrem (5.0–5.6)
+  const R = Math.hypot(W / 2, H / 2) + 30;
+  if (t >= 4.4 && t < 5.0) {
+    [[C.gray1, 4.40], [C.gray2, 4.50], [C.dark, 4.60]].forEach(([col, s]) => {
+      const p = easeInOutCubic(prog(t, s, s + 0.4));
+      if (p > 0) { c.beginPath(); c.arc(W / 2, H / 2, R * p, 0, TAU); c.fillStyle = col; c.fill(); }
+    });
+  }
+  if (t >= 5.0 && t < 5.62) {
+    const p = easeInOutCubic(prog(t, 5.14, 5.6)), rh = R * p;
+    c.beginPath(); c.rect(0, 0, W, H);
+    if (rh > 0.5) { c.moveTo(W / 2 + rh, H / 2); c.arc(W / 2, H / 2, rh, 0, TAU); }
+    c.fillStyle = C.dark; c.fill('evenodd');
+    if (rh > 0.5) { c.beginPath(); c.arc(W / 2, H / 2, rh, 0, TAU); c.lineWidth = 16; c.strokeStyle = C.white; c.stroke(); }
+    else { c.beginPath(); c.arc(W / 2, H / 2, 12 * easeOutBack(prog(t, 5.0, 5.1), 2.5), 0, TAU); c.fillStyle = C.gray2; c.fill(); }
+  }
+}
+
+/* ==========================================================================
+   LOGO 512×512 — loop de 7 s
+   0.0–2.9 parado · 2.9–3.6 círculo preto · 3.4–4.9 boneco monta e comemora ·
+   4.75–5.15 círculo vermelho abre · ícone gira/encolhe · letras caem
+   ========================================================================== */
+const LOGO = { W: 512, H: 512, T: 7 };
+const logoBg = makeBg(512, 512, 5, 6, 6);
+
+function drawLogoScene(c, off, t) {
+  const { T } = LOGO;
+  const build = t >= 4.75;
+  const P = (a, d) => build ? clamp((t - a) / d) : 1;
+  drawBg(c, logoBg, t, T);
+
+  const bs = easeOutBack(P(4.85, 0.55), 2);
+  if (bs > 0.002) {
+    c.save(); c.translate(256, 242); c.scale(bs, bs);
+    burstLayer(c, 270, 14, 0.42, t, T, 5, C.pink1, 0.05);
+    burstLayer(c, 232, 13, 0.50, t, T, 9, C.pink2, 0.05);
+    burstLayer(c, 198, 11, 0.62, t, T, 13, C.white, 0.05);
+    c.restore();
+  }
+
+  const shp = prog(t, 0.45, 1.25);
+  const shine = shp > 0 && shp < 1 ? { x: lerp(-140, 650, easeInOutSine(shp)), y: 256, ang: 0.38, w: 50 } : null;
+
+  const pi = P(5.08, 0.8), ci = clamp(pi * 1.25);
+  drawIcon(c, off, 256, 200 + 5 * Math.sin(TAU * 2 * t / T + 1),
+    204 * (1 + 1.5 * (1 - easeOutBack(pi, 1.3))),
+    -0.24 + 0.08 * Math.sin(TAU * 2 * t / T) - 1.5 * Math.PI * (1 - easeOutCubic(pi)),
+    { body: lerpColor('#262626', C.white, ci), glyph: lerpColor('#6A6A6A', C.black, ci), tri: lerpColor('#555555', C.red, ci), outline: C.black, shadow: C.shadow, shine });
+
+  const sp = P(6.3, 0.3);
+  [[402, 92, 0], [104, 138, 2.1], [424, 296, 4.2]].forEach(([x, y, ph]) =>
+    sparkle(c, x, y, 14 * sp * Math.max(0, Math.sin(TAU * 2 * t / T + ph))));
+
+  drawWordmark(c, off, {
+    cx: 256, cy: 394, s: 340 / LAYOUT.width, outline: 20, outlineColor: C.white, shadow: C.shadow, shx: 3, shy: 5, fill: C.black, accent: C.red, shine,
+    tf: i => {
+      const hop = prog(t, 1.7 + i * 0.07, 1.7 + i * 0.07 + 0.3), bob = -9 * Math.sin(Math.PI * hop);
+      const p = P(5.55 + i * 0.085, 0.5);
+      if (p <= 0) return { vis: false };
+      if (WORD[i] === 'A') { const s = easeOutBack(p, 2.2); return { dx: 0, dy: bob, rot: -TAU * 1.25 * (1 - easeOutCubic(p)), sx: s, sy: s, pv: 55 }; }
+      const b = easeOutBounce(p), sq = Math.sin(Math.PI * clamp((p - 0.36) / 0.2));
+      return { dx: 0, dy: -330 * (1 - b) + bob, rot: ROT0[i] * (1 - easeOutCubic(p)), sx: 1 + 0.12 * sq, sy: 1 - 0.18 * sq, pv: 100 };
+    },
+  });
+}
+
+function drawNoobScene(c, t) {
+  c.fillStyle = C.white; c.fillRect(0, 0, 512, 512);
+  const u = 56, hx = 256, hy = 318;
+  const ph = prog(t, 3.42, 3.95), pb = prog(t, 3.85, 4.08), pa = prog(t, 3.98, 4.22);
+  const hop = Math.sin(Math.PI * prog(t, 4.45, 4.75)) * 38;
+  if (pb > 0) {
+    c.beginPath(); c.ellipse(hx, hy + 2 * u + 8, 1.5 * u * (1 - hop / 120) * easeOutCubic(pb), 0.22 * u, 0, 0, TAU);
+    c.fillStyle = '#E4E4E4'; c.fill();
+  }
+  const up = easeOutBack(pa, 2), w = 0.3 * Math.sin(TAU * (t - 4.22) / 0.42) * prog(t, 4.22, 4.35);
+  drawNoob(c, hx, hy - hop, u, {
+    bodyScale: easeOutBack(pb, 2), armScale: pa > 0 ? 1 : 0,
+    armL: lerp(0.15, 2.6, up) + w, armR: -lerp(0.15, 2.6, up) + w,
+    headDy: -440 * (1 - easeOutBounce(ph)), headRot: 1.4 * (1 - easeOutCubic(ph)),
+  });
+}
+
+function drawLogo(c, off, t) {
+  const { W, H } = LOGO, R = Math.hypot(W / 2, H / 2) + 12;
+  if (t < 3.3 || t >= 5.15) drawLogoScene(c, off, t);
+  else {
+    drawNoobScene(c, t);
+    if (t >= 4.75) {
+      const r = R * easeInOutCubic(prog(t, 4.75, 5.15));
+      c.save(); c.beginPath(); c.arc(W / 2, H / 2, r, 0, TAU); c.clip(); drawLogoScene(c, off, t); c.restore();
+      c.beginPath(); c.arc(W / 2, H / 2, r, 0, TAU); c.lineWidth = 10; c.strokeStyle = C.black; c.stroke();
+    }
+  }
+  let rb = 0;
+  if (t >= 2.9 && t < 3.3) rb = R * easeInCubic(prog(t, 2.9, 3.3));
+  else if (t >= 3.3 && t < 3.6) rb = R * (1 - easeOutCubic(prog(t, 3.3, 3.58)));
+  if (rb > 0.5) {
+    c.beginPath(); c.arc(W / 2, H / 2, rb, 0, TAU); c.fillStyle = C.dark; c.fill();
+    c.beginPath(); c.arc(W / 2, H / 2, Math.min(rb, 9), 0, TAU); c.fillStyle = C.gray2; c.fill();
+  }
+}
+
+/* ---------- API de exportação + preview ---------- */
+const SCENES = { banner: { ...BANNER, draw: drawBanner }, logo: { ...LOGO, draw: drawLogo } };
+const canvases = {}, offs = {};
+for (const name in SCENES) {
+  canvases[name] = document.getElementById(name);
+  offs[name] = document.createElement('canvas');
+  offs[name].width = SCENES[name].W; offs[name].height = SCENES[name].H;
+}
+window.drawFrame = (name, t) => {
+  const c = canvases[name].getContext('2d');
+  c.save(); c.clearRect(0, 0, SCENES[name].W, SCENES[name].H);
+  SCENES[name].draw(c, offs[name], t);
+  c.restore();
+};
+window.renderFrame = (name, t) => { window.drawFrame(name, t); return canvases[name].toDataURL('image/png'); };
+window.ready = document.fonts.load(`40px 'Lilita One'`).then(() => document.fonts.ready).then(() => true);
+
+const params = new URLSearchParams(location.search);
+if (params.has('export')) document.body.classList.add('export');
+else window.ready.then(() => {
+  const t0 = performance.now();
+  const loop = now => {
+    const s = (now - t0) / 1000;
+    for (const name in SCENES) window.drawFrame(name, s % SCENES[name].T);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>
