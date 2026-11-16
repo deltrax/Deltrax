@@ -73,7 +73,7 @@ const SQ = (() => { const m = new DOMMatrix().translate(52, 50), o = new Path2D(
 for (const k in GLYPHS) GLYPHS[k].p = GLYPHS[k].sq ? SQ.p : new Path2D(GLYPHS[k].d);
 const HOLE_A = SQ.hole;
 // cores do quadrado: corpo e furo
-let SQ_BODY = '#E3221B', SQ_HOLE = '#151515';
+let SQ_BODY = '#151515', SQ_HOLE = '#E3221B';
 const WORD = ['D', 'E', 'L', 'T', 'R', 'A', 'X'];
 const GAP = 7;
 const LAYOUT = (() => {

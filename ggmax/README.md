@@ -2,7 +2,7 @@
 
 Estilo inspirado nas intros do logo antigo de Roblox: letras em bloco pretas caindo e quicando,
 brilho passando nas letras, explosão de desenho animado, o bonequinho clássico acenando e
-transições em círculo. O "A" de **DELTRAX** é um quadrado vermelho inclinado com furo preto
+transições em círculo. O "A" de **DELTRAX** é um quadrado preto inclinado com furo vermelho
 (como o "O" do logo antigo), e o mesmo quadrado é o ícone da marca.
 
 As cores do quadrado ficam em `SQ_BODY` e `SQ_HOLE`, no começo de `src/deltrax-anim.html`.
